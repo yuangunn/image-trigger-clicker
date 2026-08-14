@@ -1,0 +1,74 @@
+name: Update Homebrew tap
+
+# 릴리스가 게시되면 소스 tarball 의 SHA256 을 계산해
+# <계정>/homebrew-tap 저장소의 formula 버전과 해시를 자동으로 커밋한다.
+#
+# 필요한 시크릿: TAP_GITHUB_TOKEN
+#   homebrew-tap 저장소에 contents:write 권한이 있는 PAT
+#   (Fine-grained token 권장. 기본 GITHUB_TOKEN 은 다른 저장소에 못 쓴다.)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "갱신할 태그 (예: v0.1.0)"
+        required: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 태그·버전·tarball 주소 결정
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          if [ -z "$TAG" ]; then echo "태그를 결정하지 못했습니다"; exit 1; fi
+          {
+            echo "TAG=$TAG"
+            echo "VERSION=${TAG#v}"
+            echo "TARBALL=https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
+          } >> "$GITHUB_ENV"
+
+      - name: 소스 tarball SHA256 계산
+        run: |
+          curl -fsSL "$TARBALL" -o source.tar.gz
+          SHA256="$(sha256sum source.tar.gz | cut -d' ' -f1)"
+          echo "SHA256=$SHA256" >> "$GITHUB_ENV"
+          echo "tarball : $TARBALL"
+          echo "sha256  : $SHA256"
+
+      - name: tap 저장소 체크아웃
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
+
+      - name: formula 의 url 과 sha256 갱신
+        run: |
+          FORMULA="tap/Formula/image-trigger-clicker.rb"
+          test -f "$FORMULA" || { echo "$FORMULA 가 없습니다"; exit 1; }
+          # 최상단 url/sha256 만 바꾼다. resource 스탠자 안의 것은 4칸 들여쓰기라
+          # '^  url' / '^  sha256' 패턴에 걸리지 않는다.
+          # -i.bak 은 GNU sed 와 BSD(macOS) sed 양쪽에서 같게 동작한다.
+          sed -i.bak -E \
+            -e "s|^  url \".*\"|  url \"${TARBALL}\"|" \
+            -e "s|^  sha256 \".*\"|  sha256 \"${SHA256}\"|" \
+            "$FORMULA"
+          rm -f "${FORMULA}.bak"
+          git -C tap --no-pager diff -- Formula/image-trigger-clicker.rb
+
+      - name: 커밋 & 푸시
+        working-directory: tap
+        run: |
+          if git diff --quiet; then
+            echo "formula 에 변경이 없습니다 — 건너뜁니다"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/image-trigger-clicker.rb
+          git commit -m "image-trigger-clicker ${VERSION}"
+          git push
