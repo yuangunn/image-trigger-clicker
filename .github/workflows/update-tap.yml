@@ -1,15 +1,22 @@
 name: Update Homebrew tap
 
-# 릴리스가 게시되면 소스 tarball 의 SHA256 을 계산해
+# 태그를 밀면 소스 tarball 의 SHA256 을 계산해
 # <계정>/homebrew-tap 저장소의 formula 버전과 해시를 자동으로 커밋한다.
+#
+# 왜 `release: published` 가 아니라 `push: tags` 인가:
+#   Release 워크플로가 기본 GITHUB_TOKEN 으로 릴리스를 만드는데, GitHub 은
+#   GITHUB_TOKEN 이 만든 이벤트로 다른 워크플로를 트리거하지 않는다(무한 루프 방지).
+#   그래서 `release: published` 로 걸어두면 이 워크플로는 영원히 실행되지 않는다.
+#   tap 갱신에 필요한 건 소스 tarball 뿐이고 그건 태그를 미는 순간 바로 생기므로,
+#   태그 푸시에 직접 거는 편이 단순하고 Release 워크플로 실패와도 무관해진다.
 #
 # 필요한 시크릿: TAP_GITHUB_TOKEN
 #   homebrew-tap 저장소에 contents:write 권한이 있는 PAT
 #   (Fine-grained token 권장. 기본 GITHUB_TOKEN 은 다른 저장소에 못 쓴다.)
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -23,8 +30,11 @@ jobs:
     steps:
       - name: 태그·버전·tarball 주소 결정
         run: |
-          TAG="${{ github.event.release.tag_name || inputs.tag }}"
-          if [ -z "$TAG" ]; then echo "태그를 결정하지 못했습니다"; exit 1; fi
+          TAG="${{ inputs.tag || github.ref_name }}"
+          case "$TAG" in
+            v*) ;;
+            *) echo "태그가 v 로 시작하지 않습니다: $TAG"; exit 1 ;;
+          esac
           {
             echo "TAG=$TAG"
             echo "VERSION=${TAG#v}"
