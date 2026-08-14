@@ -378,9 +378,14 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-Release가 게시되면 `update-tap.yml` 이 소스 tarball의 SHA256을 계산해
+같은 태그 푸시로 `update-tap.yml` 도 함께 돌아, 소스 tarball의 SHA256을 계산해
 `yuangunn/homebrew-tap` 의 formula 버전과 해시를 자동으로 커밋한다.
 이 워크플로는 tap 저장소에 쓰기 권한이 있는 PAT을 `secrets.TAP_GITHUB_TOKEN` 으로 받는다.
+
+> `release: published` 가 아니라 태그 푸시에 거는 이유: GitHub 은 기본 `GITHUB_TOKEN` 이
+> 만든 이벤트로 다른 워크플로를 트리거하지 않는다(무한 루프 방지). Release 워크플로가
+> `GITHUB_TOKEN` 으로 릴리스를 만들기 때문에, 릴리스 이벤트에 걸어두면 tap 갱신이
+> 영원히 실행되지 않는다.
 
 ### tap 저장소 준비
 
