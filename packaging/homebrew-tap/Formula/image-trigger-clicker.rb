@@ -1,15 +1,14 @@
 # image-trigger-clicker Homebrew formula
 #
 # 이 파일은 <계정>/homebrew-tap 저장소의 Formula/ 아래에 놓는다.
-# url 과 sha256(최상단 두 줄)은 릴리스마다 update-tap.yml 워크플로가 자동으로 갱신한다.
-# resource 스탠자는 `brew update-python-resources image-trigger-clicker` 로 재생성한다.
+# url 과 sha256(최상단 두 줄)은 태그를 밀 때 update-tap.yml 워크플로가 자동으로 갱신한다.
 class ImageTriggerClicker < Formula
   include Language::Python::Virtualenv
 
   desc "Clicks preset coordinates when a given image appears on screen"
   homepage "https://github.com/yuangunn/image-trigger-clicker"
   url "https://github.com/yuangunn/image-trigger-clicker/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "7b4590cfe5688371e23715970b25867e825e890b2fb5092836cb8e6b9cfc253b"
   license "MIT"
   head "https://github.com/yuangunn/image-trigger-clicker.git", branch: "main"
 
@@ -17,53 +16,68 @@ class ImageTriggerClicker < Formula
   depends_on :macos
 
   # ──────────────────────────────────────────────────────────────────────────
-  # opencv-python 대안 (설치가 실패하거나 너무 오래 걸릴 때)
+  # 휠(wheel)로 받는 의존성: numpy / opencv-python / pillow
   #
-  # 아래 opencv-python resource 는 sdist 를 소스에서 빌드한다. CMake 로 OpenCV
-  # 전체를 컴파일하므로 30분 이상 걸리고, 툴체인 문제로 실패하는 일도 잦다.
-  # `brew update-python-resources` 가 이 패키지에서 멈추는 경우도 있다.
+  # 이 셋은 sdist 소스 빌드가 현실적이지 않다.
+  #   - opencv-python : CMake 로 OpenCV 전체를 빌드한다(30~60분, 자주 실패).
+  #   - numpy         : Apple clang 으로 컴파일이 깨진다. Homebrew 의 numpy formula
+  #                     자체가 `depends_on "gcc" => :build` 로 gcc 를 쓴다.
+  #   - pillow        : jpeg/tiff/webp 등 이미지 라이브러리 헤더를 요구한다.
   #
-  # 그럴 때는 Homebrew 가 이미 빌드해 둔 opencv 를 쓴다.
-  #   1) 아래 resource "opencv-python" 과 resource "numpy" 블록을 지운다.
-  #   2) depends_on 을 추가한다:
-  #        depends_on "numpy"
-  #        depends_on "opencv"
-  #   3) install 을 아래처럼 바꿔서 brew 의 cv2/numpy 를 venv 에서 보이게 한다:
+  # 실제로 v0.1.0 을 resource(sdist) 방식으로 설치해 봤다가 11분 만에
+  # numpy 2.5.2 컴파일 오류(string_fastsearch.h 템플릿 치환 실패)로 깨졌다.
+  # 그래서 이 셋만 공식 배포 휠을 그대로 설치한다.
   #
-  #        def install
-  #          virtualenv_install_with_resources
-  #          site = Language::Python.site_packages("python3.12")
-  #          (libexec/site/"homebrew-deps.pth").write <<~PTH
-  #            #{Formula["opencv"].opt_lib}/#{site}
-  #            #{Formula["numpy"].opt_lib}/#{site}
-  #          PTH
-  #        end
-  #
-  # 트레이드오프: 설치는 훨씬 빠르고 안정적이지만, brew 의 opencv 가 업그레이드되면
-  # 이 도구도 함께 영향을 받는다. 자세한 내용은 tap 저장소의 README 를 보라.
+  # 검토했지만 채택하지 않은 대안: depends_on "opencv" (+ "numpy", "pillow")
+  #   Homebrew 가 미리 빌드해 둔 bottle 을 쓰므로 빠르고 안정적이다. 다만 brew 의
+  #   opencv 5.0 은 Qt / VTK / OpenVINO / ffmpeg / tesseract / gcc 까지 의존
+  #   formula 106개를 끌고 온다(수 GB). cv2.matchTemplate 하나 때문에 치르기엔
+  #   과한 비용이라 쓰지 않았다. 순정 Homebrew 구성을 원하면 이 방식으로 바꾸고
+  #   venv 에 brew 의 site-packages 를 .pth 로 노출하면 된다.
+  #   이때 brew 의 opencv 는 python@3.14 용으로 빌드되므로 위 depends_on 도
+  #   python@3.14 로 맞춰야 한다.
   # ──────────────────────────────────────────────────────────────────────────
+  on_arm do
+    resource "numpy" do
+      url "https://files.pythonhosted.org/packages/60/2e/b5aee50a1f74ac815cf8331812cb8251e29024025de462e0c047641c614c/numpy-2.5.2-cp312-cp312-macosx_11_0_arm64.whl"
+      sha256 "4bbd96c833ecc8cc069ce518078fc8c60cb9cbfb0fea5b7a803ad65035596d03"
+    end
 
-  # 아래 resource 목록은 2026-08-14 기준 최신 버전이다.
+    resource "opencv-python" do
+      url "https://files.pythonhosted.org/packages/9c/75/76f6ade78f6102c61034f828e2a22616708df2c9504bc8d6af9dd8f73dc5/opencv_python-5.0.0.93-cp37-abi3-macosx_13_0_arm64.whl"
+      sha256 "198a75138241810206a17c829dbcc40a7cb1841cda538ca86cbbfc6c7d95f898"
+    end
+
+    resource "pillow" do
+      url "https://files.pythonhosted.org/packages/d8/66/9a386a92561f402389a4fc70c18838bf6d35eb5eb5c6850b4b2dc64f5048/pillow-12.3.0-cp312-cp312-macosx_11_0_arm64.whl"
+      sha256 "ffd0c5368496f41b0944be820fcb7a838aa6e623d250b01acf2643939c3f99d7"
+    end
+  end
+
+  on_intel do
+    resource "numpy" do
+      url "https://files.pythonhosted.org/packages/69/72/dccb0aaf40972777283303919f613964227266d0c13adebb79ac124f1c3e/numpy-2.5.2-cp312-cp312-macosx_10_13_x86_64.whl"
+      sha256 "14e373cfc6387177e8409dac3c7159be8eb05cd77096cd7c950268b86f62831c"
+    end
+
+    resource "opencv-python" do
+      url "https://files.pythonhosted.org/packages/15/8c/bc1bda6aae69a32e9d84fc34153ba104cd25226861eb4aea33b2cea4860d/opencv_python-5.0.0.93-cp37-abi3-macosx_14_0_x86_64.whl"
+      sha256 "6bbc32f59e1b1a7db7b39c81f63d00625f041d333037fd8702f6da52cc39108b"
+    end
+
+    resource "pillow" do
+      url "https://files.pythonhosted.org/packages/37/bf/fb3ebff8ddcb76aac5a01389251bbbb9519922a9b520d8247c1ca864a25d/pillow-12.3.0-cp312-cp312-macosx_10_13_x86_64.whl"
+      sha256 "ba09209fbe443b4acccebe845d8a138b89a8f4fbaeedd44953490b5315d5e965"
+    end
+  end
+
+  # ── 소스(sdist)에서 빌드하는 의존성 ──
   # 갱신: brew update-python-resources image-trigger-clicker
+  #       실행 후 numpy / opencv-python / pillow 블록은 위 휠 형태로 되돌릴 것.
+  #       (2026-08-14 기준 버전)
   resource "mouseinfo" do
     url "https://files.pythonhosted.org/packages/28/fa/b2ba8229b9381e8f6381c1dcae6f4159a7f72349e414ed19cfbbd1817173/MouseInfo-0.1.3.tar.gz"
     sha256 "2c62fb8885062b8e520a3cce0a297c657adcc08c60952eb05bc8256ef6f7f6e7"
-  end
-
-  resource "numpy" do
-    url "https://files.pythonhosted.org/packages/9a/80/db0b4559e57ec36362bedbb05530a87fafbcb6067708c946967a41d449e7/numpy-2.5.2.tar.gz"
-    sha256 "d482d171c406ae88c5b19cad3b6a1c4c5209f886ab74bc44c2c865c23f52d860"
-  end
-
-  # 주의: 소스 빌드에 아주 오래 걸린다. 위 "opencv-python 대안" 주석 참고.
-  resource "opencv-python" do
-    url "https://files.pythonhosted.org/packages/79/4c/a438d23e09ce2033c09f7b784ad2fbdb0adf529e434101ed28f142226f98/opencv_python-5.0.0.93.tar.gz"
-    sha256 "66aac3e5b5faa48d4025816592f3af19e4bfc2c68dec067bae2dbb4ca10aa9e2"
-  end
-
-  resource "pillow" do
-    url "https://files.pythonhosted.org/packages/1c/3d/bb7fca845737cf9d7dbde16ed1843984665ff2e0a518f5db43e77ec540b9/pillow-12.3.0.tar.gz"
-    sha256 "3b8182a766685eaa002637e28b4ec8d6b18819a0c71f579bf0dbaa5830297cce"
   end
 
   resource "pyautogui" do
@@ -121,8 +135,26 @@ class ImageTriggerClicker < Formula
     sha256 "0d3b0a9889f72916c095a58e7e1c275c260cb8a86b8ef8b909e60cb002fd54d5"
   end
 
+  # 휠로 설치할 resource 이름. install 에서 sdist 목록과 갈라내는 데 쓴다.
+  WHEEL_RESOURCES = %w[numpy opencv-python pillow].freeze
+
   def install
-    virtualenv_install_with_resources
+    venv = virtualenv_create(libexec, "python3.12")
+
+    # Homebrew 는 내려받은 파일을 캐시에 "<sha256>--원래이름" 으로 저장한다.
+    # pip 는 그 이름을 잘못된 휠 파일명으로 보고 거부하므로, 원래 이름으로
+    # 복사한 뒤 넘긴다. (pip 는 --no-binary=:all: 이어도 명시적으로 준
+    # 로컬 .whl 파일은 그대로 설치한다.)
+    wheels = WHEEL_RESOURCES.map do |name|
+      resource_to_install = resource(name)
+      wheel = buildpath/resource_to_install.url.split("/").last
+      cp resource_to_install.cached_download, wheel
+      wheel
+    end
+    venv.pip_install wheels
+
+    venv.pip_install resources.reject { |r| WHEEL_RESOURCES.include?(r.name) }
+    venv.pip_install_and_link buildpath
   end
 
   def caveats
@@ -142,6 +174,9 @@ class ImageTriggerClicker < Formula
 
   test do
     assert_match "image-trigger-clicker #{version}", shell_output("#{bin}/itc --version")
+
+    # 의존성이 실제로 임포트되는지 (opencv 없으면 confidence 매칭이 안 된다)
+    system libexec/"bin/python", "-c", "import cv2, numpy, PIL, pyautogui"
 
     # 화면 접근 없이 확인할 수 있는 경로만 테스트한다.
     # (CI 샌드박스에는 화면 기록 권한이 없어 run/test/pos 는 쓸 수 없다.)
