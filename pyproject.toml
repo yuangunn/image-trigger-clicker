@@ -60,7 +60,11 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.mypy]
-python_version = "3.11"
+# 코드는 3.11 부터 돌지만 mypy 는 3.12 semantics 로 검사한다.
+# numpy 2.5 의 스텁이 `type` 구문(3.12+)을 써서 python_version=3.11 로는 파싱조차
+# 실패하기 때문이다. 3.12 전용 문법을 실수로 쓰는 것은 ruff 의 target-version=py311
+# 이 잡아준다.
+python_version = "3.12"
 files = ["src", "tests"]
 disallow_untyped_defs = true
 warn_redundant_casts = true
@@ -77,6 +81,7 @@ module = [
     "PIL", "PIL.*",
     "cv2", "cv2.*",
     "numpy", "numpy.*",
+    "Quartz", "Quartz.*",
     "pytest", "pytest.*", "_pytest.*",
 ]
 ignore_missing_imports = true

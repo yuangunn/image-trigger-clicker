@@ -10,7 +10,7 @@ from typing import Any
 
 __all__ = ["__version__", "pg"]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 _pyautogui: Any = None
 
