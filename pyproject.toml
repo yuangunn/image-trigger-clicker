@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "image-trigger-clicker"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Trigger clicks on preset coordinates when a given image appears on screen"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -37,6 +37,11 @@ itc = "image_trigger_clicker.cli:main"
 [project.urls]
 Homepage = "https://github.com/yuangunn/image-trigger-clicker"
 Issues = "https://github.com/yuangunn/image-trigger-clicker/issues"
+
+# 버전 단일 출처: src/image_trigger_clicker/__init__.py 의 __version__.
+# itc --version 도 같은 값을 쓰므로 두 곳이 어긋날 수 없다.
+[tool.hatch.version]
+path = "src/image_trigger_clicker/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/image_trigger_clicker"]

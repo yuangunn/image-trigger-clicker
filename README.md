@@ -371,12 +371,21 @@ src/image_trigger_clicker/
 
 ### 릴리스
 
+버전은 `src/image_trigger_clicker/__init__.py` 의 `__version__` **한 곳**에만 적혀 있다.
+`pyproject.toml` 은 그 값을 읽어가고(`[tool.hatch.version]`), `itc --version` 도 같은 값을
+쓰므로 어긋날 수가 없다. 올릴 때 그 한 줄만 고치면 된다.
+
 `v*` 태그를 밀면 GitHub Actions가 sdist/wheel을 빌드해 Release를 만들고 아티팩트를 첨부한다.
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+# 1) __version__ 을 0.2.0 으로 고치고 커밋
+# 2) 같은 번호로 태그
+git tag v0.2.0
+git push origin v0.2.0
 ```
+
+태그 번호와 `__version__` 이 다르면 formula의 `brew test` 가 잡아낸다
+(`assert_match "image-trigger-clicker #{version}"`).
 
 같은 태그 푸시로 `update-tap.yml` 도 함께 돌아, 소스 tarball의 SHA256을 계산해
 `yuangunn/homebrew-tap` 의 formula 버전과 해시를 자동으로 커밋한다.
