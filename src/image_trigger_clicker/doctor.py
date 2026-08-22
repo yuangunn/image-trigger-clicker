@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import config as config_mod
-from . import matcher, pg
+from . import matcher
 
 __all__ = ["Check", "run_checks"]
 
@@ -39,11 +39,11 @@ class Check:
     fix: str = ""
 
 
-def _check_screen_recording() -> tuple[Check, float | None]:
-    """스크린샷이 검은 화면인지로 화면 기록 권한을 판정하고, 배율도 함께 구한다."""
+def _check_screen_recording() -> tuple[Check, matcher.Screen | None]:
+    """스크린샷이 검은 화면인지로 화면 기록 권한을 판정하고, 화면 구성도 함께 구한다."""
     try:
         shot = matcher.grab()
-        logical = pg().size()
+        screen = matcher.detect_screen(shot)
     except Exception as exc:
         # 어떤 이유로 실패했든 사용자에게는 해결 방법을 안내해야 한다.
         return (
@@ -52,17 +52,17 @@ def _check_screen_recording() -> tuple[Check, float | None]:
         )
 
     low, high = shot.convert("L").getextrema()
-    scale = shot.width / int(logical[0]) if int(logical[0]) > 0 else 1.0
 
     if high <= 8:
         return (
             Check(
                 False,
                 "화면 기록 권한",
-                f"스크린샷이 완전히 검은 화면입니다 (밝기 {low}~{high}). 권한이 없을 때 나오는 증상입니다.",
+                f"스크린샷이 완전히 검은 화면입니다 (밝기 {low}~{high}). "
+                "권한이 없을 때 나오는 증상입니다.",
                 _SCREEN_FIX,
             ),
-            scale,
+            screen,
         )
     if high - low <= 4:
         return (
@@ -73,7 +73,7 @@ def _check_screen_recording() -> tuple[Check, float | None]:
                 "권한 문제이거나 화면이 꺼져 있을 수 있습니다.",
                 _SCREEN_FIX + "\n노트북 뚜껑을 덮었다면 열어두고 밝기만 최저로 내리세요.",
             ),
-            scale,
+            screen,
         )
     return (
         Check(
@@ -81,7 +81,7 @@ def _check_screen_recording() -> tuple[Check, float | None]:
             "화면 기록 권한",
             f"정상 (스크린샷 {shot.width}x{shot.height}, 밝기 {low}~{high})",
         ),
-        scale,
+        screen,
     )
 
 
@@ -119,26 +119,44 @@ def _check_accessibility() -> Check:
     )
 
 
-def _check_display(scale: float | None) -> Check:
-    if scale is None:
-        return Check(None, "디스플레이 배율", "스크린샷 실패로 확인하지 못했습니다")
-    try:
-        logical = pg().size()
-    except Exception as exc:
-        return Check(None, "디스플레이 배율", f"화면 크기를 읽지 못했습니다 — {exc!r}")
+def _check_display(screen: matcher.Screen | None) -> Check:
+    if screen is None:
+        return Check(None, "디스플레이", "스크린샷 실패로 확인하지 못했습니다")
 
-    detail = (
-        f"논리 {int(logical[0])}x{int(logical[1])} / "
-        f"물리 {round(int(logical[0]) * scale)}x{round(int(logical[1]) * scale)}, 배율 {scale:g}x"
-    )
-    if abs(scale - round(scale)) > 0.01:
+    count = len(screen.displays)
+    origin = "" if (screen.left, screen.top) == (0, 0) else f" 원점({screen.left},{screen.top})"
+    detail = [
+        f"모니터 {count or 1}대, 가상 데스크톱 논리 {screen.width}x{screen.height}{origin}, "
+        f"배율 {screen.scale:g}x"
+    ]
+    for i, d in enumerate(screen.displays, 1):
+        main = " (주 디스플레이)" if d.is_main else ""
+        detail.append(f"- 모니터 {i}: 원점({d.left},{d.top}) {d.width}x{d.height} 배율 {d.scale:g}x{main}")
+
+    if screen.mixed_scales:
         return Check(
             None,
-            "디스플레이 배율",
-            detail + " — 배율이 정수가 아닙니다(스케일링 해상도). 좌표가 1~2픽셀 흔들릴 수 있습니다.",
-            "디스플레이 해상도를 '기본값'으로 두면 매칭이 가장 안정적입니다.",
+            "디스플레이",
+            "\n".join(detail) + "\n모니터마다 배율이 다릅니다.",
+            "단일 배율로 환산하므로 주 디스플레이가 아닌 곳에서는 좌표가 어긋날 수 있습니다.\n"
+            "대상 창을 주 디스플레이에 두거나, region 으로 그 모니터만 감시하세요.",
         )
-    return Check(True, "디스플레이 배율", detail)
+    if abs(screen.scale - round(screen.scale)) > 0.01:
+        return Check(
+            None,
+            "디스플레이",
+            "\n".join(detail) + "\n배율이 정수가 아닙니다(스케일링 해상도).",
+            "좌표가 1~2픽셀 흔들릴 수 있습니다. 디스플레이 해상도를 '기본값'으로 두면 가장 안정적입니다.",
+        )
+    if count > 1:
+        return Check(
+            None,
+            "디스플레이",
+            "\n".join(detail),
+            "모니터가 여러 대인 구성은 실기기 검증을 못 했습니다. "
+            "`itc test` 로 좌표가 맞는지 먼저 확인하세요.",
+        )
+    return Check(True, "디스플레이", "\n".join(detail))
 
 
 def _check_config(config_path: Path, profile_name: str | None) -> list[Check]:
@@ -198,10 +216,10 @@ def _check_config(config_path: Path, profile_name: str | None) -> list[Check]:
 
 def run_checks(config_path: Path, profile_name: str | None) -> list[Check]:
     """전체 점검을 실행하고 결과 목록을 돌려준다."""
-    screen_check, scale = _check_screen_recording()
+    screen_check, screen = _check_screen_recording()
     return [
         screen_check,
         _check_accessibility(),
-        _check_display(scale),
+        _check_display(screen),
         *_check_config(config_path, profile_name),
     ]

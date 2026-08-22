@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from . import pg
 from .config import ClickSpec
+from .matcher import Screen
 
 __all__ = ["do_click", "in_bounds", "resolve_click"]
 
@@ -25,10 +26,13 @@ def resolve_click(click: ClickSpec, center: tuple[int, int]) -> tuple[int, int]:
     return center
 
 
-def in_bounds(x: int, y: int, screen: tuple[int, int]) -> bool:
-    """클릭 좌표가 화면 안인지. 밖이면 클릭을 건너뛴다."""
-    width, height = screen
-    return 0 <= x < width and 0 <= y < height
+def in_bounds(x: int, y: int, screen: Screen) -> bool:
+    """클릭 좌표가 화면 안인지. 밖이면 클릭을 건너뛴다.
+
+    모니터가 여러 대면 가상 데스크톱 전체가 기준이다 — 주 디스플레이 왼쪽에 있는
+    모니터는 논리 좌표가 음수라, 0 이상만 허용하면 멀쩡한 좌표를 막게 된다.
+    """
+    return screen.contains(x, y)
 
 
 def do_click(x: int, y: int, *, dry_run: bool = False) -> None:
